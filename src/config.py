@@ -53,6 +53,9 @@ GEMINI_MODEL = _env("GEMINI_MODEL", "gemini-2.0-flash")
 
 # --- Image generation (Pollinations.ai - free) --------------------------------
 POLLINATIONS_BASE = _env("POLLINATIONS_BASE", "https://image.pollinations.ai/prompt/")
+# A "referrer" lets Pollinations rate-limit per-app instead of per-IP.
+# Cloud IPs (GitHub runners) get throttled hard without it.
+POLLINATIONS_REFERRER = _env("POLLINATIONS_REFERRER", "https://github.com/rahuljain2519/HORRORSTORY")
 
 # --- Voice generation (edge-tts - free) ---------------------------------------
 VOICE_NAME = _env("VOICE_NAME", "hi-IN-MadhurNeural")

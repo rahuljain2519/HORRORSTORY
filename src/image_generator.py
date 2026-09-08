@@ -2,6 +2,7 @@
 
 Downloads one image per scene + a cover image.
 """
+import random
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,8 +10,19 @@ from urllib.parse import quote
 
 import requests
 
-from config import (IMAGES_DIR, POLLINATIONS_BASE, VIDEO_WIDTH, VIDEO_HEIGHT)
+from config import (
+    IMAGES_DIR, POLLINATIONS_BASE, POLLINATIONS_REFERRER,
+    VIDEO_WIDTH, VIDEO_HEIGHT,
+)
 from utils import log_info, log_error, clean_title
+
+_UA = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    )
+}
+_MODELS = ["flux", "turbo"]  # primary + lighter/cheaper fallback
 
 
 @dataclass
@@ -37,23 +49,40 @@ def _build_prompts(story: dict) -> list[ImageSpec]:
 
 
 def _download(spec: ImageSpec, width: int, height: int) -> Path:
-    """Download from Pollinations; sizing favours portrait for vertical videos."""
-    url = (
-        f"{POLLINATIONS_BASE}"
-        f"{quote(spec.prompt)}?width={width}&height={height}"
-        f"&model=flux&nologo=true&seed={spec.seed}"
-    )
+    """Download from Pollinations; sizing favours portrait for vertical videos.
+
+    Batches the per-image retries nicely: tries each model, then backs off
+    between attempts. No API key needed.
+    """
     dest = IMAGES_DIR / spec.filename
-    for attempt in range(4):
-        try:
-            r = requests.get(url, timeout=120)
-            r.raise_for_status()
-            dest.write_bytes(r.content)
-            return dest
-        except Exception as e:  # noqa: BLE001
-            log_error(f"Image attempt {attempt + 1} failed ({e}); retrying...")
-            time.sleep(4 * (attempt + 1))
-    raise RuntimeError(f"Could not generate image for: {spec.filename}")
+    base = f"{POLLINATIONS_BASE}{quote(spec.prompt)}"
+    last_err = None
+    for model in _MODELS:
+        for attempt in range(6):
+            params = {
+                "width": width,
+                "height": height,
+                "model": model,
+                "nologo": "true",
+                "seed": spec.seed,
+                "referrer": POLLINATIONS_REFERRER,
+            }
+            try:
+                r = requests.get(base, params=params, timeout=180, headers=_UA)
+                r.raise_for_status()
+                if len(r.content) < 10000:
+                    raise RuntimeError("Response too small (likely placeholder)")
+                dest.write_bytes(r.content)
+                return dest
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                delay = 10 + int(random.random() * 8) + 8 * attempt
+                log_error(
+                    f"Image attempt {attempt + 1}/{len(_MODELS) * 6} "
+                    f"({model}) failed ({e}); sleeping {delay}s..."
+                )
+                time.sleep(delay)
+    raise RuntimeError(f"Could not generate image for: {spec.filename} ({last_err})")
 
 
 def generate_images(story: dict, portrait=True) -> list[Path]:
