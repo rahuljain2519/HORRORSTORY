@@ -15,6 +15,7 @@ import json
 import re
 from pathlib import Path
 
+import time
 import requests
 
 from config import OLLAMA_HOST, OLLAMA_MODEL, STORY_API_MODE, TEMPLATES_DIR, STORIES_DIR
@@ -76,26 +77,31 @@ def _call_gemini(system: str, user: str, timeout=300) -> str:
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{model}:generateContent?key={GOOGLE_AI_API_KEY}"
         )
-        log_info(f"Calling Gemini model={model} ...")
-        try:
-            resp = requests.post(url, json=payload, timeout=timeout)
-            resp.raise_for_status()
-            data = resp.json()
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-            if text.strip():
-                return text
-        except (KeyError, IndexError) as e:
-            last_err = f"Malformed response from {model}: {e}"
-            log_info(str(last_err))
-            continue
-        except requests.HTTPError as e:
-            last_err = f"{model} failed: {e}"
-            status = getattr(e.response, "status_code", None)
-            if status in (400, 401, 403, 429):
-                # Key/account-level errors won't change with a different model
-                raise RuntimeError(last_err) from e
-            log_info(str(last_err))
-            continue
+        for attempt in range(1, 4):  # retry transient 429/503 a few times
+            log_info(f"Calling Gemini model={model} (attempt {attempt}/3) ...")
+            try:
+                resp = requests.post(url, json=payload, timeout=timeout)
+                if resp.status_code in (429, 503):
+                    log_info(f"{model} busy ({resp.status_code}); retrying in {attempt * 5}s")
+                    time.sleep(attempt * 5)
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                text = data["candidates"][0]["content"]["parts"][0]["text"]
+                if text.strip():
+                    return text
+            except (KeyError, IndexError) as e:
+                last_err = f"Malformed response from {model}: {e}"
+                log_info(str(last_err))
+                break
+            except requests.HTTPError as e:
+                last_err = f"{model} failed: {e}"
+                status = getattr(e.response, "status_code", None)
+                if status in (400, 401, 403):
+                    # Key/account-level errors won't change with a different model
+                    raise RuntimeError(last_err) from e
+                log_info(str(last_err))
+                break
 
     raise RuntimeError(f"All Gemini models failed. Last error: {last_err}")
 
