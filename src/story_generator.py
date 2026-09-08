@@ -59,9 +59,11 @@ def _call_gemini(system: str, user: str, timeout=300) -> str:
             "aistudio.google.com/apikey)."
         )
 
-    candidates = [GEMINI_MODEL, "gemini-2.0-flash", "gemini-2.0-flash-001",
-                  "gemini-1.5-flash", "gemini-1.5-flash-latest",
-                  "gemini-flash-latest", "gemini-2.0-flash-lite"]
+    # 2026-era free accounts often expose only Gemini 2.5 model names.
+    candidates = [GEMINI_MODEL, "gemini-2.5-flash", "gemini-2.5-flash-latest",
+                  "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-2.5-pro-latest",
+                  "gemini-flash-latest", "gemini-2.0-flash", "gemini-2.0-flash-001",
+                  "gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-latest"]
 
     payload = {
         "contents": [{"role": "user", "parts": [{"text": f"{system}\n\n{user}"}]}],

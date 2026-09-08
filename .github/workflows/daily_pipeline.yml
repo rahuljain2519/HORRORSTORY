@@ -58,6 +58,16 @@ jobs:
       - name: Run daily horror pipeline
         run: python src/pipeline.py
 
+      - name: List Gemini models (diagnostic - only on pipeline failure)
+        if: ${{ failure() }}
+        run: |
+          echo "Models available to this key:"
+          curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$GOOGLE_AI_API_KEY" \
+            | python -c "import sys,json;d=json.load(sys.stdin);print('\n'.join(sorted(m['name'] for m in d.get('models',[]))))" \
+            || echo "Could not list models"
+        env:
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+
       - name: Upload artifacts (videos for manual backup / review)
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
