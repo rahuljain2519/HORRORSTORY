@@ -47,11 +47,50 @@ def _call_ollama(system: str, user: str, timeout=300) -> str:
     return data.get("response", "")
 
 
+_BLOCKLIST = ("aqa", "deep-research", "embedding", "imagen", "image", "tts",
+              "audio", "slam", "segmenter", "veo", "veoverno")
+_FAVOR_FLASH = ("flash", "2.0", "2.5", "nano", "mini", "lite")
+
+
+def _discover_gemini_models(api_key: str) -> list[str]:
+    """Ask the API which generateContent models this key can actually use.
+
+    Returns model names ranked: flash/nano/lite variants first (fast+free),
+    then the remaining gemini chat models. Non-text models are skipped.
+    """
+    try:
+        r = requests.get(
+            f"https://generativelanguage.googleapis.com/v1beta/models"
+            f"?key={api_key}&pageSize=100",
+            timeout=60,
+        )
+        r.raise_for_status()
+        names = [m["name"].split("/")[-1] for m in r.json().get("models", [])]
+    except Exception as e:  # noqa: BLE001
+        log_info(f"Model discovery failed ({e}); using fallback list.")
+        names = []
+
+    text_models = [
+        n for n in names
+        if not any(b in n.lower() for b in _BLOCKLIST)
+        and ("gemini" in n.lower() or "flash" in n.lower())
+    ]
+    if not text_models:
+        text_models = names and [n for n in names if "gemini" in n.lower()] or names
+
+    flashy = [n for n in text_models if any(f in n.lower() for f in _FAVOR_FLASH)]
+    ranked = flashy + [n for n in text_models if n not in flashy]
+    if ranked:
+        log_info("Gemini models discovered: " + ", ".join(ranked))
+    return ranked
+
+
 def _call_gemini(system: str, user: str, timeout=300) -> str:
     """Call Google's free tier Gemini API (needs a free key - no charges).
 
-    Tries the configured model first, then falls back to other free-tier
-    model IDs (the exact naming varies by account/region/API version).
+    Auto-discovers the model names available to this key (naming differs by
+    account/region), so no model needs to be configured. 503s mean the model
+    is temporarily overloaded -> retried persistently with backoff.
     """
     from config import GOOGLE_AI_API_KEY, GEMINI_MODEL
     if not GOOGLE_AI_API_KEY:
@@ -60,30 +99,33 @@ def _call_gemini(system: str, user: str, timeout=300) -> str:
             "aistudio.google.com/apikey)."
         )
 
-    # 2026-era free accounts often expose only Gemini 2.5 model names.
-    candidates = [GEMINI_MODEL, "gemini-2.5-flash", "gemini-2.5-flash-latest",
-                  "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-2.5-pro-latest",
-                  "gemini-flash-latest", "gemini-2.0-flash", "gemini-2.0-flash-001",
-                  "gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-latest"]
+    detected = _discover_gemini_models(GOOGLE_AI_API_KEY)
+    candidates = []
+    for m in (GEMINI_MODEL, "gemini-flash-latest"):
+        if m and m not in candidates:
+            candidates.append(m)
+    candidates += detected
 
     payload = {
         "contents": [{"role": "user", "parts": [{"text": f"{system}\n\n{user}"}]}],
         "generationConfig": {"temperature": 0.9, "maxOutputTokens": 4096},
     }
 
+    # On 503/unavailable keep retrying for ~60s per model before moving on.
     last_err = None
     for model in candidates:
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{model}:generateContent?key={GOOGLE_AI_API_KEY}"
         )
-        for attempt in range(1, 4):  # retry transient 429/503 a few times
-            log_info(f"Calling Gemini model={model} (attempt {attempt}/3) ...")
+        for attempt in range(1, 7):
+            log_info(f"Calling Gemini model={model} (attempt {attempt}/6) ...")
             try:
                 resp = requests.post(url, json=payload, timeout=timeout)
                 if resp.status_code in (429, 503):
-                    log_info(f"{model} busy ({resp.status_code}); retrying in {attempt * 5}s")
-                    time.sleep(attempt * 5)
+                    delay = 7 + attempt * 6
+                    log_info(f"{model} busy ({resp.status_code}); retrying in {delay}s")
+                    time.sleep(delay)
                     continue
                 resp.raise_for_status()
                 data = resp.json()
