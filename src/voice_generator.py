@@ -4,6 +4,7 @@ Generates one mp3 per scene plus an 'intro' clip (title hook narration).
 edge-tts does not need an API key and works on GitHub Actions runners.
 """
 import asyncio
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,8 +22,16 @@ class NarrationClip:
 
 
 async def _synth(text, out_path: Path) -> None:
-    communicate = edge_tts.Communicate(text, VOICE_NAME, rate=VOICE_RATE, volume=VOICE_VOLUME)
-    await communicate.save(str(out_path))
+    """Retry once on failure; edge-tts can 403 transiently from cloud IPs."""
+    for attempt in range(3):
+        try:
+            communicate = edge_tts.Communicate(text, VOICE_NAME, rate=VOICE_RATE, volume=VOICE_VOLUME)
+            await communicate.save(str(out_path))
+            return
+        except Exception as e:  # noqa: BLE001
+            log_info(f"TTS attempt {attempt + 1}/3 failed ({e}); retrying...")
+            time.sleep(5 * (attempt + 1))
+    raise RuntimeError(f"edge-tts could not synthesize: {text[:60]}...")
 
 
 def _estimate_duration(mp3_path: Path, text: str) -> float:
