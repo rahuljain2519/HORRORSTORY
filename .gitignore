@@ -1,0 +1,31 @@
+# Secrets
+.env
+*.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Output
+output/
+!output/.gitkeep
+assets/bg_music/*.mp3
+assets/bg_music/*.wav
+
+# Credentials / tokens
+credentials.json
+token.pickle
+client_secret*.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Logs
+*.log
