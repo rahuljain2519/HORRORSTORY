@@ -47,29 +47,55 @@ def _call_ollama(system: str, user: str, timeout=300) -> str:
 
 
 def _call_gemini(system: str, user: str, timeout=300) -> str:
-    """Call Google's free tier Gemini API (needs a free key - no charges)."""
+    """Call Google's free tier Gemini API (needs a free key - no charges).
+
+    Tries the configured model first, then falls back to other free-tier
+    model IDs (the exact naming varies by account/region/API version).
+    """
     from config import GOOGLE_AI_API_KEY, GEMINI_MODEL
     if not GOOGLE_AI_API_KEY:
         raise RuntimeError(
             "STORY_API_MODE=gemini needs GOOGLE_AI_API_KEY (free from "
             "aistudio.google.com/apikey)."
         )
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={GOOGLE_AI_API_KEY}"
-    )
+
+    candidates = [GEMINI_MODEL, "gemini-2.0-flash", "gemini-2.0-flash-001",
+                  "gemini-1.5-flash", "gemini-1.5-flash-latest",
+                  "gemini-flash-latest", "gemini-2.0-flash-lite"]
+
     payload = {
         "contents": [{"role": "user", "parts": [{"text": f"{system}\n\n{user}"}]}],
         "generationConfig": {"temperature": 0.9, "maxOutputTokens": 4096},
     }
-    log_info(f"Calling Gemini model={GEMINI_MODEL} ...")
-    resp = requests.post(url, json=payload, timeout=timeout)
-    resp.raise_for_status()
-    data = resp.json()
-    try:
-        return data["candidates"][0]["content"]["parts"][0]["text"]
-    except (KeyError, IndexError) as e:
-        raise RuntimeError(f"Unexpected Gemini response: {data.get('error') or data}") from e
+
+    last_err = None
+    for model in candidates:
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model}:generateContent?key={GOOGLE_AI_API_KEY}"
+        )
+        log_info(f"Calling Gemini model={model} ...")
+        try:
+            resp = requests.post(url, json=payload, timeout=timeout)
+            resp.raise_for_status()
+            data = resp.json()
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+            if text.strip():
+                return text
+        except (KeyError, IndexError) as e:
+            last_err = f"Malformed response from {model}: {e}"
+            log_info(str(last_err))
+            continue
+        except requests.HTTPError as e:
+            last_err = f"{model} failed: {e}"
+            status = getattr(e.response, "status_code", None)
+            if status in (400, 401, 403, 429):
+                # Key/account-level errors won't change with a different model
+                raise RuntimeError(last_err) from e
+            log_info(str(last_err))
+            continue
+
+    raise RuntimeError(f"All Gemini models failed. Last error: {last_err}")
 
 
 def _call_pollinations_text(system: str, user: str, timeout=300) -> str:
