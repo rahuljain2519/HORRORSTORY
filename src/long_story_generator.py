@@ -20,7 +20,7 @@ from config import STORIES_DIR, TEMPLATES_DIR
 from utils import log_info, save_json, clean_title
 from story_generator import _call_gemini, _extract_json
 
-TARGET_CHARS_PER_CHAPTER = (1700, 2100)  # Hindi chars -> ~2 min TTS each
+TARGET_CHARS_PER_CHAPTER = (900, 1100)  # Hindi chars -> ~1.5-2 min TTS each
 MIN_CHAPTERS = 6
 MAX_CHAPTERS = 8
 
@@ -54,14 +54,14 @@ def _expand_chapter(data: dict, ch: dict, is_last: bool) -> str:
 सारांश/घटना: {ch['synopsis']}
 
 नियम:
-- अध्याय का पूरा नैरेशन लगभग {target} हिंदी अक्षरों (देवनागरी) में लिखो।
-- (~15 मिनट की पूरी कहानी का यह एक अध्याय है।)
+- अध्याय का नैरेशन सख्ती से लगभग {target} हिंदी अक्षरों (देवनागरी) में हो - नहीं बढ़ाओ।
+- पूरी कहानी मिलकर ~15 मिनट (लगभग 9500-10000 अक्षर) की है, इसका यह एक अध्याय है।
 - घटनाएँ, संवाद, रहस्य और डरावना टेंशन विस्तार से।
 - पात्रों के नाम एक जैसे रखो।
 - {('यह कहानी का अंतिम अध्याय है - रहस्यमय समाधान/ट्विस्ट के साथ शानदार अंत।' if is_last else 'अध्याय के अंत में क्लिफहैंगर/सस्पेंस रखो ताकि अगला अध्याय जारी रहे।')}
 - केवल अध्याय का नैरेशन टेक्स्ट ही लिखो। कोई शीर्षक, कोई JSON, कोई व्याख्या नहीं।
 """
-    return _call_gemini(system, user)
+    return _call_gemini(system, user, max_tokens=1500)
 
 
 def generate_long_story():

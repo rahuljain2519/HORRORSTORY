@@ -8,11 +8,13 @@ Targets ~15 min runtime for long-form YouTube uploads.
 import math
 from pathlib import Path
 
+import numpy as np
 from moviepy.editor import (
     AudioFileClip,
     CompositeAudioClip,
     CompositeVideoClip,
     ImageClip,
+    VideoClip,
     concatenate_audioclips,
 )
 
@@ -22,57 +24,33 @@ from utils import log_info, clean_title, split_into_sentences
 from video_maker import _subtitle_overlay, _music_track
 
 
-def _large_text_clips(text: str, size, frame_pad=2):
-    """Split a long narration into sentence subtitle clips (rolling style).
-
-    Returns subtitle overlays PROPORTIONAL to each sentence's length, so text
-    keeps pace with the audio. Compensates for long scratch delays with padding.
-    """
+def _chapter_pieces(text: str):
+    """Split a chapter into sentences, weighted by length (for subtitle timing)."""
     sentences = split_into_sentences(text)
     if not sentences:
         return []
-    longest = max(len(s) for s in sentences)
-    need_wrap = longest > 55  # anything much longer than a line gets padded wrap
-    base_share = 1.0 if not need_wrap else 1.3
-
-    total_chars = sum(len(s) + base_share for s in sentences)
-    dur_per_char = 1.0  # fallback; real timing set by caller
-
-    clips = []
-    spent = 0.0
-    for s in sentences:
-        weight = len(s) + base_share
-        frac = weight / total_chars
-        clips.append((s, frac))
-        spent += frac
-    return clips
+    pad = 1.3  # extra weight per sentence so short lines don't flash by too fast
+    total = sum(len(s) + pad for s in sentences)
+    return [(s, (len(s) + pad) / total) for s in sentences]
 
 
 def _rolling_subtitles(story: dict, total_narr_dur: float, size) -> list:
-    """Build [start, end, subtitle_image] timings across the whole timeline."""
-    from PIL import Image
-    import numpy as np
-
-    img_subdur = []
+    """Build subtitle overlay clips across the whole timeline, sentence-paced."""
+    all_weight = sum(len(ch["narration"]) + 2 for ch in story["chapters"])
+    clips = []
     cursor = 0.0
-
-    # chapters laid out back-to-back
-    all_chars = sum(len(ch["narration"]) + 2 for ch in story["chapters"])
     for ch in story["chapters"]:
-        text = ch["narration"]
-        ch_frac = (len(text) + 2) / all_chars
+        ch_frac = (len(ch["narration"]) + 2) / all_weight
         ch_dur = total_narr_dur * ch_frac
-
-        pieces = _large_text_clips(text, size)
-        for sent, frac in pieces:
+        for sent, frac in _chapter_pieces(ch["narration"]):
             d = ch_dur * frac
             sub = _subtitle_overlay(sent, d, size)
             if sub is None:
                 continue
             sub = sub.set_start(cursor).set_duration(d)
-            img_subdur.append(sub)
+            clips.append(sub)
             cursor += d
-    return img_subdur
+    return clips
 
 
 def build_long_video(story: dict, image_path: Path, title: str = "") -> Path:
@@ -93,22 +71,28 @@ def build_long_video(story: dict, image_path: Path, title: str = "") -> Path:
     log_info(f"Long narration duration: {narration.duration:.1f}s (~{narration.duration/60:.1f} min)")
 
     # ---- base image: Ken Burns over the FULL video ----
-    base = ImageClip(str(image_path))
-    base = base.resize(height=max(cfg.VIDEO_WIDTH, cfg.VIDEO_HEIGHT) * 1.2)
-    base = base.resize(lambda t: 1.0 + 0.05 * (t / max(narration.duration, 0.001)))
-    bw, bh = base.size
-    tw, th = cfg.VIDEO_WIDTH, cfg.VIDEO_HEIGHT
-    bw = max(bw, tw)
-    max_dx = bw - tw
-    max_dy = max(bh - th, 0)
+    # Pre-render the image once at max zoom, then slide a window over it per
+    # frame (MoviePy 1.0.3's crop fx can't take callable positions).
+    from PIL import Image as PILImage
+
+    w, h = VIDEO_WIDTH, VIDEO_HEIGHT
+    pil = PILImage.open(str(image_path)).convert("RGB")
+    max_zoom = 1.25
+    big_w, big_h = int(w * max_zoom), int(h * max_zoom + int(h * 0.3))
+    scale = max(big_w / pil.width, big_h / pil.height)
+    big_w, big_h = int(pil.width * scale), int(pil.height * scale)
+    big_w = max(big_w, w); big_h = max(big_h, h)
+    arr = np.array(pil.resize((big_w, big_h), PILImage.LANCZOS))
+    max_dx = big_w - w
+    max_dy = big_h - h
     x1 = max_dx // 2
-    if max_dy > 0:
-        def drift(t):
-            return int(max_dy * (0.5 - 0.5 * math.cos(math.pi * t / narration.duration)))
-        base = base.crop(x1=x1, y1=drift, x2=x1 + tw, y2=lambda t: drift(t) + th)
-    else:
-        base = base.crop(x1=x1, y1=0, x2=x1 + tw, y2=th)
-    base = base.set_duration(narration.duration)
+
+    def frame_at(t):
+        prog = t / max(narration.duration, 0.001)
+        y = int(max_dy * (0.5 - 0.5 * math.cos(math.pi * prog)))
+        return arr[y:y + h, x1:x1 + w]
+
+    base = VideoClip(frame_at, duration=narration.duration)
 
     # ---- rolling subtitles aligned to narration ----
     subs = _rolling_subtitles(story, narration.duration, video_size)

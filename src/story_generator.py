@@ -85,7 +85,7 @@ def _discover_gemini_models(api_key: str) -> list[str]:
     return ranked
 
 
-def _call_gemini(system: str, user: str, timeout=300) -> str:
+def _call_gemini(system: str, user: str, timeout=300, max_tokens=4096) -> str:
     """Call Google's free tier Gemini API (needs a free key - no charges).
 
     Auto-discovers the model names available to this key (naming differs by
@@ -108,7 +108,7 @@ def _call_gemini(system: str, user: str, timeout=300) -> str:
 
     payload = {
         "contents": [{"role": "user", "parts": [{"text": f"{system}\n\n{user}"}]}],
-        "generationConfig": {"temperature": 0.9, "maxOutputTokens": 4096},
+        "generationConfig": {"temperature": 0.9, "maxOutputTokens": max_tokens},
     }
 
     # On 503/unavailable keep retrying for ~60s per model before moving on.
