@@ -3,6 +3,7 @@
 You must run auth_helper.py ONCE on a machine with a browser to obtain the
 refresh token, then set it as an env var / GitHub secret.
 """
+import re
 import os
 from pathlib import Path
 
@@ -21,6 +22,13 @@ API_VERSION = "v3"
 
 CATEGORY_ENTERTAINMENT = "24"
 CATEGORY_FILM_ANIMATION = "1"
+
+
+def _clean_yt_title(text: str) -> str:
+    """Remove special characters/emojis from upload titles (keep Hindi + Latin)."""
+    cleaned = re.sub(r"[^\u0900-\u097F\uA8E0-\uA8FFA-Za-z0-9\s]", "", text)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return (cleaned or "Horror Story")[:100]
 
 
 def _get_credentials():
@@ -78,14 +86,14 @@ def _upload(youtube, file_path: Path, title: str, description: str, tags: list,
 
 def upload_full(story: dict, video_path: Path, date_str: str, privacy: str = None):
     privacy = privacy or config.YOUTUBE_PRIVACY
-    title = f"{story['title']} | à¤¡à¤°à¤¾à¤µà¤¨à¥€ à¤•à¤¹à¤¾à¤¨à¥€ | Horror Stories in Hindi"
+    title = _clean_yt_title(f"{story['title']} डरावनी कहानी Horror Stories in Hindi")
     desc = (
-        f"ðŸ•¯ï¸ {story['hook']}\n\n"
-        f"ðŸ”¥ à¤­à¤¯à¤¾à¤¨à¤• à¤•à¤¹à¤¾à¤¨à¤¿à¤¯à¤¾à¤ à¤šà¥ˆà¤¨à¤² à¤ªà¤° à¤°à¥‹à¤œà¤¼ à¤¨à¤ˆ à¤¹à¥‰à¤°à¤° à¤•à¤¹à¤¾à¤¨à¥€!\n\n"
+        f"🕯️ {story['hook']}\n\n"
+        f"🔥 भयानक कहानियाँ चैनल पर रोज़ नई हॉरर कहानी!\n\n"
         f"#horrorstory #hindihorror #bhayanakkahani #ghoststory #horrorvideos "
         f"#kahanian #paranormal #bhoot #halftimehorror"
     )
-    tags = config.DEFAULT_TAGS + ["hindi horror full video", "300 seconds horror", "à¤¡à¤°à¤¾à¤µà¤¨à¥€ à¤•à¤¹à¤¾à¤¨à¥€"]
+    tags = config.DEFAULT_TAGS + ["hindi horror full video", "300 seconds horror", "डरावनी कहानी"]
     youtube = get_youtube_service()
     return _upload(youtube, video_path, title, desc, tags, privacy, CATEGORY_ENTERTAINMENT)
 
@@ -93,10 +101,12 @@ def upload_full(story: dict, video_path: Path, date_str: str, privacy: str = Non
 def upload_short(story: dict, short_path: Path, variant: int, date_str: str,
                  privacy: str = None):
     privacy = privacy or config.YOUTUBE_PRIVACY
-    title = f"{story['title']} à¤¡à¤°à¤¾à¤µà¤¨à¥€ à¤¸à¤šà¥à¤šà¥€ à¤•à¤¹à¤¾à¤¨à¥€ - Part {variant} | Shorts"
+    title = _clean_yt_title(
+        f"{story['title']} डरावनी सच्ची कहानी Part {variant} Shorts"
+    )
     desc = (
-        f"ðŸ˜± {story['hook']}\n\n"
-        f"à¤­à¤¯à¤¾à¤¨à¤• à¤•à¤¹à¤¾à¤¨à¤¿à¤¯à¤¾à¤ - à¤°à¥‹à¤œà¤¼ à¤¦à¥‹ à¤¹à¥‰à¤°à¤° shorts!\n"
+        f"😱 {story['hook']}\n\n"
+        f"भयानक कहानियाँ - रोज़ दो हॉरर shorts!\n"
         f"#shorts #horror #hindihorror #bhayanakkahani #ghoststory #shortsfeed"
     )
     tags = config.DEFAULT_TAGS + ["shorts", "horror kindigend", "viral horror"]
@@ -107,7 +117,9 @@ def upload_short(story: dict, short_path: Path, variant: int, date_str: str,
 def upload_long(story: dict, video_path: Path, date_str: str, privacy: str = None):
     """Upload a long-form (~15 min) story video."""
     privacy = privacy or config.YOUTUBE_PRIVACY
-    title = f"{story['title']} | पूरी डरावनी कहानी | Hindi Horror Story"
+    title = _clean_yt_title(
+        f"{story['title']} पूरी डरावनी कहानी Hindi Horror Story"
+    )
     desc = (
         f"🕯️ {story['hook']}\n\n"
         f"🔥 {len(story.get('chapters', []))} अध्यायों वाली पूरी हिंदी हॉरर कहानी.\n\n"
