@@ -104,6 +104,23 @@ def upload_short(story: dict, short_path: Path, variant: int, date_str: str,
     return _upload(youtube, short_path, title, desc, tags, privacy, CATEGORY_ENTERTAINMENT)
 
 
+def upload_long(story: dict, video_path: Path, date_str: str, privacy: str = None):
+    """Upload a long-form (~15 min) story video."""
+    privacy = privacy or config.YOUTUBE_PRIVACY
+    title = f"{story['title']} | पूरी डरावनी कहानी | Hindi Horror Story"
+    desc = (
+        f"🕯️ {story['hook']}\n\n"
+        f"🔥 {len(story.get('chapters', []))} अध्यायों वाली पूरी हिंदी हॉरर कहानी.\n\n"
+        f"भयानक कहानियाँ चैनल पर रोज़ नई हॉरर कहानी!\n\n"
+        f"#horrorstory #hindihorror #bhayanakkahani #ghoststory #horrorvideos "
+        f"#kahanian #paranormal #bhoot #hindistor"
+    )
+    tags = config.DEFAULT_TAGS + ["full horror story", "15 minute horror story",
+                                  "लंबी डरावनी कहानी", "पूरी कहानी"]
+    youtube = get_youtube_service()
+    return _upload(youtube, video_path, title, desc, tags, privacy, CATEGORY_ENTERTAINMENT)
+
+
 def upload_all(story: dict, full_path: Path, short_paths: list[Path],
                date_str: str, privacy: str = None):
     ids = {"full": None, "shorts": []}
