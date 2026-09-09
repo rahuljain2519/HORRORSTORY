@@ -63,6 +63,7 @@ def run():
             save_json(manifest, config.OUTPUT_DIR / f"manifest_{date_str}.json")
         except Exception as e:  # noqa: BLE001
             log_error(f"Upload failed (keep artifacts; retry manually): {e}")
+            raise  # make upload failures visible in CI instead of a green run
     else:
         log_info("YouTube not configured -> SKIPPING upload (videos kept locally).")
 

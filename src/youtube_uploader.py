@@ -30,12 +30,18 @@ def _get_credentials():
             "Missing YouTube credentials. Run auth_helper.py once and set "
             "YOUTUBE_REFRESH_TOKEN (+ client id/secret)."
         )
-    return Credentials(
+    creds = Credentials(
+        token="",
         refresh_token=config.YOUTUBE_REFRESH_TOKEN,
         client_id=config.YOUTUBE_CLIENT_ID,
         client_secret=config.YOUTUBE_CLIENT_SECRET,
         token_uri="https://oauth2.googleapis.com/token",
     )
+    # Refresh eagerly: google-api-python-client can lazily send empty tokens
+    # otherwise, producing "unregistered callers" 403 errors.
+    from google.auth.transport.requests import Request
+    creds.refresh(Request())
+    return creds
 
 
 def get_youtube_service():
@@ -72,14 +78,14 @@ def _upload(youtube, file_path: Path, title: str, description: str, tags: list,
 
 def upload_full(story: dict, video_path: Path, date_str: str, privacy: str = None):
     privacy = privacy or config.YOUTUBE_PRIVACY
-    title = f"{story['title']} | डरावनी कहानी | Horror Stories in Hindi"
+    title = f"{story['title']} | à¤¡à¤°à¤¾à¤µà¤¨à¥€ à¤•à¤¹à¤¾à¤¨à¥€ | Horror Stories in Hindi"
     desc = (
-        f"🕯️ {story['hook']}\n\n"
-        f"🔥 भयानक कहानियाँ चैनल पर रोज़ नई हॉरर कहानी!\n\n"
+        f"ðŸ•¯ï¸ {story['hook']}\n\n"
+        f"ðŸ”¥ à¤­à¤¯à¤¾à¤¨à¤• à¤•à¤¹à¤¾à¤¨à¤¿à¤¯à¤¾à¤ à¤šà¥ˆà¤¨à¤² à¤ªà¤° à¤°à¥‹à¤œà¤¼ à¤¨à¤ˆ à¤¹à¥‰à¤°à¤° à¤•à¤¹à¤¾à¤¨à¥€!\n\n"
         f"#horrorstory #hindihorror #bhayanakkahani #ghoststory #horrorvideos "
         f"#kahanian #paranormal #bhoot #halftimehorror"
     )
-    tags = config.DEFAULT_TAGS + ["hindi horror full video", "300 seconds horror", "डरावनी कहानी"]
+    tags = config.DEFAULT_TAGS + ["hindi horror full video", "300 seconds horror", "à¤¡à¤°à¤¾à¤µà¤¨à¥€ à¤•à¤¹à¤¾à¤¨à¥€"]
     youtube = get_youtube_service()
     return _upload(youtube, video_path, title, desc, tags, privacy, CATEGORY_ENTERTAINMENT)
 
@@ -87,10 +93,10 @@ def upload_full(story: dict, video_path: Path, date_str: str, privacy: str = Non
 def upload_short(story: dict, short_path: Path, variant: int, date_str: str,
                  privacy: str = None):
     privacy = privacy or config.YOUTUBE_PRIVACY
-    title = f"{story['title']} डरावनी सच्ची कहानी - Part {variant} | Shorts"
+    title = f"{story['title']} à¤¡à¤°à¤¾à¤µà¤¨à¥€ à¤¸à¤šà¥à¤šà¥€ à¤•à¤¹à¤¾à¤¨à¥€ - Part {variant} | Shorts"
     desc = (
-        f"😱 {story['hook']}\n\n"
-        f"भयानक कहानियाँ - रोज़ दो हॉरर shorts!\n"
+        f"ðŸ˜± {story['hook']}\n\n"
+        f"à¤­à¤¯à¤¾à¤¨à¤• à¤•à¤¹à¤¾à¤¨à¤¿à¤¯à¤¾à¤ - à¤°à¥‹à¤œà¤¼ à¤¦à¥‹ à¤¹à¥‰à¤°à¤° shorts!\n"
         f"#shorts #horror #hindihorror #bhayanakkahani #ghoststory #shortsfeed"
     )
     tags = config.DEFAULT_TAGS + ["shorts", "horror kindigend", "viral horror"]
